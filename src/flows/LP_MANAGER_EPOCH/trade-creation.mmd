@@ -1,0 +1,54 @@
+sequenceDiagram
+    participant Owner
+    participant Alice
+    participant Bob
+    participant Contract as LPManagerEpoch
+
+    Note over Owner,Contract: Epoch 1: freeAssets=3000, totalShares=3000*1e18<br>Alice: 1000*1e18 shares, Bob: 2000*1e18 shares
+
+    Owner->>Contract: createTradeLayer(2000)
+    Contract->>Contract: Check globalFreeAssets >= 2000
+    Contract->>Contract: _lockFromCurrentEpoch(2000)
+    Contract->>Contract: epochs[1].freeAssets -= 2000 (to 1000)
+    Contract->>Contract: epochs[1].lockedAssets += 2000
+    Contract->>Contract: epochs[1].frozen = true
+    Contract->>Contract: _splitEpoch(1)
+    Contract->>Contract: Locked shares = (3000*1e18 * 2000) / 3000 = 2000*1e18
+    Contract->>Contract: Rollover shares = 3000*1e18 - 2000*1e18 = 1000*1e18
+    Contract->>Contract: Create Epoch 2: id=2, totalShares=1000*1e18, freeAssets=1000
+    Contract->>Contract: epochs[1]: totalShares=2000*1e18, freeAssets=0, split=true, rolloverEpochId=2
+    Contract->>Contract: currentEpochId = 2
+    Contract->>Contract: temporalSequenceCounter++ (to 1)
+    Contract->>Contract: tradeLayers[1]: id=1, requiredBacking=2000, fundingEpochId=1, status=Open
+    Contract-->>Owner: Emit EpochCreated(2)
+    Contract-->>Owner: Emit EpochSplit(1, 2000*1e18, 2)
+    Contract-->>Owner: Emit TradeLayerCreated(1, 2000, 1)
+
+    Note over Alice,Contract: Trade Layer 1: fundingEpochId=1, remainingBacking=2000
+
+    Alice->>Contract: claimLayerAllocation(1)
+    Contract->>Contract: Check layer.status = Open, !hasAllocated[Alice]
+    Contract->>Contract: Effective shares = 1000*1e18 (no split adjustment needed yet)
+    Contract->>Contract: Allocation = (1000*1e18 * 2000) / (2000*1e18) = 1000
+    Contract->>Contract: Check Alice.available >= 1000
+    Contract->>Contract: tradeLayers[1].allocations[Alice] = 1000
+    Contract->>Contract: tradeLayers[1].hasAllocated[Alice] = true
+    Contract->>Contract: tradeLayers[1].totalAllocated += 1000
+    Contract->>Contract: tradeLayers[1].remainingBacking -= 1000 (to 1000)
+    Contract->>Contract: liquidityProviders[Alice].accumulatedUtilization += 1000
+    Contract-->>Alice: Emit AllocationClaimed(1, Alice, 1000)
+
+    Bob->>Contract: claimLayerAllocation(1)
+    Contract->>Contract: Check layer.status = Open, !hasAllocated[Bob]
+    Contract->>Contract: Effective shares = 2000*1e18
+    Contract->>Contract: Allocation = (2000*1e18 * 2000) / (2000*1e18) = 2000
+    Contract->>Contract: Cap allocation to remainingBacking = 1000
+    Contract->>Contract: Check Bob.available >= 1000
+    Contract->>Contract: tradeLayers[1].allocations[Bob] = 1000
+    Contract->>Contract: tradeLayers[1].hasAllocated[Bob] = true
+    Contract->>Contract: tradeLayers[1].totalAllocated += 1000 (to 2000)
+    Contract->>Contract: tradeLayers[1].remainingBacking -= 1000 (to 0)
+    Contract->>Contract: liquidityProviders[Bob].accumulatedUtilization += 1000
+    Contract-->>Bob: Emit AllocationClaimed(1, Bob, 1000)
+
+    Note over Owner,Contract: Final State: tradeLayers[1].totalAllocated=2000, remainingBacking=0<br>Epoch 1: freeAssets=0, lockedAssets=2000<br>Epoch 2: freeAssets=1000, totalShares=1000*1e18

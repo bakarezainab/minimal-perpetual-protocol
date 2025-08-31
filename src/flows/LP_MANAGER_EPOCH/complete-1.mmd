@@ -1,0 +1,119 @@
+%%{init: {'theme':'base', 'themeVariables': {'primaryColor': '#ff6b6b', 'primaryTextColor': '#fff', 'primaryBorderColor': '#ff4757', 'lineColor': '#2f3640', 'secondaryColor': '#70a1ff', 'tertiaryColor': '#5352ed'}}}%%
+
+flowchart TD
+    subgraph "Flow 1: Initial LP Deposits & Basic Operations"
+        A1[Contract Deployment] --> A2[constructor<br/>Creates Epoch #1<br/>currentEpochId = 1]
+        
+        A2 --> A3[Alice calls deposit 1000]
+        A3 --> A4["deposit function:<br/>• Transfer 1000 tokens<br/>• Mint 1000*PRECISION shares<br/>• Credit Alice in Epoch #1<br/>• Update globalFreeAssets"]
+        
+        A4 --> A5[Bob calls deposit 500]
+        A5 --> A6["deposit function:<br/>• Transfer 500 tokens<br/>• Mint 500*PRECISION shares<br/>• Credit Bob in Epoch #1<br/>• Update globalFreeAssets"]
+        
+        A6 --> A7[State: Epoch #1 has 1500 free assets<br/>Alice: 1000 shares, Bob: 500 shares]
+        
+        A7 --> A8[Alice calls withdrawFromEpoch 1, 200]
+        A8 --> A9["withdrawFromEpoch function:<br/>• Burn 200*PRECISION shares from Alice<br/>• Reduce Epoch #1 free assets by 200<br/>• Transfer 200 tokens to Alice<br/>• Update globalFreeAssets"]
+        
+        A9 --> A10[Final State: Epoch #1 has 1300 free assets<br/>Alice: 800 shares, Bob: 500 shares]
+    end
+    
+    subgraph "Flow 2: Trade Layer Creation & Epoch Splitting"
+        B1[State: Epoch #1 with 1300 free assets] --> B2[Owner calls createTradeLayer 400]
+        
+        B2 --> B3["createTradeLayer function calls:<br/>_lockFromCurrentEpoch 400"]
+        
+        B3 --> B4["_lockFromCurrentEpoch:<br/>• Move 400 from free to locked in Epoch #1<br/>• Set Epoch #1 frozen = true<br/>• Call _splitEpoch 1"]
+        
+        B4 --> B5["_splitEpoch function:<br/>• Calculate locked shares: 400*PRECISION<br/>• Calculate rollover shares: 900*PRECISION<br/>• Create Epoch #2 with 900 free assets<br/>• Update Epoch #1 to 400 locked, 0 free"]
+        
+        B5 --> B6[Create TradeLayer with:<br/>• requiredBacking: 400<br/>• fundingEpochId: 1<br/>• status: Open]
+        
+        B6 --> B7[Final State:<br/>Epoch #1: 400 locked assets, frozen, split<br/>Epoch #2: 900 free assets<br/>currentEpochId = 2]
+    end
+    
+    subgraph "Flow 3: LP Allocation Claims"
+        C1[TradeLayer created, status = Open] --> C2[Alice calls claimLayerAllocation layerId]
+        
+        C2 --> C3["claimLayerAllocation:<br/>• Calculate Alice's effective locked shares<br/>• sOld = Alice's shares in Epoch #1<br/>• effectiveShares = sOld * lockedTotal / originalTotal"]
+        
+        C3 --> C4["Continue allocation calculation:<br/>• allocation = effectiveShares * requiredBacking / totalLockedShares<br/>• Check LP has available capacity<br/>• Update accumulatedUtilization"]
+        
+        C4 --> C5[Bob calls claimLayerAllocation layerId]
+        C5 --> C6[Same calculation process for Bob<br/>proportional to his Epoch #1 ownership]
+        
+        C6 --> C7[State: Both LPs have claimed allocations<br/>Their accumulatedUtilization increased<br/>Layer totalAllocated updated]
+    end
+    
+    subgraph "Flow 4A: Successful Trade Execution"
+        D1[LPs have claimed allocations] --> D2[Owner calls activateTradeLayer layerId]
+        
+        D2 --> D3["activateTradeLayer:<br/>• Check status == Open<br/>• Check totalAllocated > 0<br/>• Set status = Active"]
+        
+        D3 --> D4[Trade operations occur<br/>Position generates profit]
+        
+        D4 --> D5[Owner calls closeTradeLayer layerId, +50]
+        
+        D5 --> D6["closeTradeLayer with profit:<br/>• Reduce Epoch #1 lockedAssets by 400<br/>• Add 450 to Epoch #1 freeAssets<br/>• Update globalFreeAssets<br/>• Set status = Closed"]
+        
+        D6 --> D7[Alice calls releaseAllocation layerId]
+        D7 --> D8["releaseAllocation:<br/>• Reduce Alice's accumulatedUtilization<br/>• Clear allocation mapping<br/>• Set hasAllocated = false"]
+        
+        D8 --> D9[Bob calls releaseAllocation layerId]
+        D9 --> D10[Same cleanup process for Bob]
+        
+        D10 --> D11[Final State: Epoch #1 has 450 free assets<br/>LPs can withdraw their profit share]
+    end
+    
+    subgraph "Flow 4B: Failed Trade (Loss) Execution"
+        E1[LPs have claimed allocations] --> E2[Owner calls activateTradeLayer layerId]
+        
+        E2 --> E3[Trade operations occur<br/>Position generates loss]
+        
+        E3 --> E4[Owner calls closeTradeLayer layerId, -100]
+        
+        E4 --> E5["closeTradeLayer with loss:<br/>• Reduce Epoch #1 lockedAssets by 400<br/>• Add 300 to Epoch #1 freeAssets<br/>• Update globalFreeAssets<br/>• Set status = Closed"]
+        
+        E5 --> E6[Alice calls releaseAllocation layerId]
+        E6 --> E7[Bob calls releaseAllocation layerId]
+        
+        E7 --> E8[Final State: Epoch #1 has 300 free assets<br/>LPs absorb the loss proportionally]
+    end
+    
+    subgraph "Flow 5: Share Materialization"
+        F1[Alice has virtual shares across split epochs] --> F2[Alice calls materializeShares 1]
+        
+        F2 --> F3["materializeShares:<br/>• Check epoch is split<br/>• Calculate locked vs rollover portions<br/>• Update epochSharesOf for both epochs"]
+        
+        F3 --> F4[Continue materialization for up to 10 epochs<br/>following the split chain]
+        
+        F4 --> F5[Update lastMaterializedEpoch for Alice]
+        
+        F5 --> F6[Alice now has concrete shares<br/>in both locked and rollover epochs]
+    end
+    
+    subgraph "Flow 6: Multi-Epoch Operations"
+        G1[Multiple epochs exist from previous splits] --> G2[Charlie calls deposit 800]
+        
+        G2 --> G3[Deposit goes to currentEpochId<br/>the latest rollover epoch]
+        
+        G3 --> G4[Owner creates another trade layer<br/>needing 600 backing]
+        
+        G4 --> G5[Current epoch gets locked and split again<br/>creating yet another rollover epoch]
+        
+        G5 --> G6[Charlie claims allocation from<br/>the newly locked epoch]
+        
+        G6 --> G7[Multiple active trade layers<br/>backed by different epochs<br/>LPs have utilization across layers]
+    end
+    
+    subgraph "Flow 7: Cancelled/Never Activated Trade"
+        H1[Trade layer created, LPs claimed allocations] --> H2[Market conditions change<br/>Owner decides not to activate]
+        
+        H2 --> H3[Owner calls closeTradeLayer directly<br/>without ever calling activateTradeLayer]
+        
+        H3 --> H4["closeTradeLayer from Open status:<br/>• Return locked funds to epoch<br/>• Set status = Closed<br/>• No trading occurred"]
+        
+        H4 --> H5[LPs call releaseAllocation<br/>to free their utilization]
+        
+        H5 --> H6[Funds returned, utilization cleared<br/>No profit or loss realized]
+    end

@@ -3,7 +3,7 @@ pragma solidity ^0.8.13;
 
 import {Ownable} from "@openzeppelin-contracts/access/Ownable.sol";
 import {PositionType, Position} from "./interfaces/IPosition.sol";
-import {LPManager} from "./LPManager.sol";
+import {LPManagerEpoch} from "./LPManagerEpoch.sol";
 import {IERC20} from "@openzeppelin-contracts/token/ERC20/IERC20.sol";
 import {CollateralManager} from "./CollateralManager.sol";
 import {PriceOracle, Feed} from "./PriceOracle.sol";
@@ -13,11 +13,11 @@ contract PositionManager is PriceOracle, Ownable {
     mapping(uint256 => Position) public positions;
     mapping(address owner => uint256[] positionIds) public userPosition;
     uint256 maximumLeverage = 5; // 5x
-    LPManager public lpManager;
+    LPManagerEpoch public lpManager;
     CollateralManager public collateralManager;
 
     constructor(address owner, address asset) Ownable(owner) {
-        lpManager = new LPManager(IERC20(asset), "LP DAI", "LPDAI", address(this));
+        lpManager = new LPManagerEpoch((asset));
         collateralManager = new CollateralManager(asset);
     }
 
@@ -121,6 +121,8 @@ contract PositionManager is PriceOracle, Ownable {
         // precision is that of DAI ( 18 decimals )
         uint256 positionSize = userCollateral * leverage;
 
+        uint256 positionLayerId = lpManager.createTradeLayer(positionSize);
+        lpManager.activateTradeLayer(positionLayerId);
         Position memory newPosition = Position({
             size: positionSize,
             owner: msg.sender,
@@ -129,28 +131,29 @@ contract PositionManager is PriceOracle, Ownable {
             leverage: leverage,
             id: currentPositionId,
             openedAt: block.timestamp,
-            positionType: positionType
+            positionType: positionType,
+            layerId: positionLayerId
         });
         positions[currentPositionId] = newPosition;
         userPosition[msg.sender].push(currentPositionId);
         currentPositionId++;
-        lpManager.increaseLockedAmount(positionSize);
     }
 
-    function closePosition(uint256 positionId) external {
-        // verify said position is ripe for liquidation
-        (bool liquidatable, uint256 losses) = isLiquidatable(positionId);
-        if (liquidatable) {
-            liquidate(positionId);
-            return;
-        }
-        // pullling user collateral and covering his losses with
-        uint256 profits = getPositionProfit(positionId);
-        require(profits > 0, "This position has no profits");
-        Position memory position = positions[positionId];
-        windDownPosition(positionId);
-        // require(success, "Couldn't delete position");
-    }
+    // @note - commenting this out because I don't understand its intent, who's supposed to call this?
+    // function closePosition(uint256 positionId) external {
+    //     // verify said position is ripe for liquidation
+    //     (bool liquidatable, uint256 losses) = isLiquidatable(positionId);
+    //     if (liquidatable) {
+    //         liquidate(positionId);
+    //         return;
+    //     }
+    //     // pullling user collateral and covering his losses with
+    //     uint256 profits = getPositionProfit(positionId);
+    //     require(profits > 0, "This position has no profits");
+    //     Position memory position = positions[positionId];
+    //     windDownPosition(positionId);
+    //     // require(success, "Couldn't delete position");
+    // }
 
     function liquidate(uint256 positionId) public {
         // verify said position is ripe for liquidation
@@ -168,6 +171,7 @@ contract PositionManager is PriceOracle, Ownable {
             false
         );
         collateralManager.withdrawLosses(address(lpManager), losses);
+        //
         /**
          * + liquidationFee *
          */

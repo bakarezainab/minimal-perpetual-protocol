@@ -15,4 +15,5 @@ struct Position {
     uint indexTokenSize;
     uint leverage;
     PositionType positionType;
+    uint layerId;
 }
