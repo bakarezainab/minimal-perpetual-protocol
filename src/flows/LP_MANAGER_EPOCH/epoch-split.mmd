@@ -1,0 +1,30 @@
+sequenceDiagram
+    participant Owner
+    participant Alice
+    participant Bob
+    participant Contract as LPManagerEpoch
+
+    Note over Owner,Contract: Post TradeLayerCreated(1, 2000, 1)<br>Epoch 1: split=true, preSplitTotalShares=3000*1e18, totalShares=2000*1e18<br>Alice: 1000*1e18 shares, Bob: 2000*1e18 shares
+
+    Alice->>Contract: materializeShares(1)
+    Contract->>Contract: Check lastMaterializedEpoch[Alice] = 1
+    Contract->>Contract: Get epochs[1]: split=true, preSplitTotalShares=3000*1e18, totalShares=2000*1e18
+    Contract->>Contract: sOld = epochSharesOf[Alice][1] = 1000*1e18
+    Contract->>Contract: Locked = (1000*1e18 * 2000*1e18) / (3000*1e18) = 666*1e18
+    Contract->>Contract: Rollover = 1000*1e18 - 666*1e18 = 334*1e18
+    Contract->>Contract: epochSharesOf[Alice][1] = 666*1e18
+    Contract->>Contract: epochSharesOf[Alice][2] += 334*1e18
+    Contract->>Contract: lastMaterializedEpoch[Alice] = 2
+    Contract-->>Alice: Emit Materialized(Alice, 1, 666*1e18, 334*1e18)
+
+    Bob->>Contract: materializeShares(1)
+    Contract->>Contract: Check lastMaterializedEpoch[Bob] = 1
+    Contract->>Contract: sOld = epochSharesOf[Bob][1] = 2000*1e18
+    Contract->>Contract: Locked = (2000*1e18 * 2000*1e18) / (3000*1e18) = 1333*1e18
+    Contract->>Contract: Rollover = 2000*1e18 - 1333*1e18 = 667*1e18
+    Contract->>Contract: epochSharesOf[Bob][1] = 1333*1e18
+    Contract->>Contract: epochSharesOf[Bob][2] += 667*1e18
+    Contract->>Contract: lastMaterializedEpoch[Bob] = 2
+    Contract-->>Bob: Emit Materialized(Bob, 1, 1333*1e18, 667*1e18)
+
+    Note over Owner,Contract: Final State: Alice: epoch1=666*1e18, epoch2=334*1e18<br>Bob: epoch1=1333*1e18, epoch2=667*1e18<br>Epoch 2: totalShares=1000*1e18 + 334*1e18 + 667*1e18 = 2001*1e18

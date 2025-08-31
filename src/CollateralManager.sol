@@ -2,11 +2,14 @@
 pragma solidity ^0.8.13;
 
 import {IERC20} from "@openzeppelin-contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin-contracts/token/ERC20/utils/SafeERC20.sol";
 import {Ownable} from "@openzeppelin-contracts/access/Ownable.sol";
 import "./interfaces/ICollateralManager.sol";
 
 // Collect usdc and save the amounts of each deposit of the users
 contract CollateralManager is Ownable, ICollateralManager {
+    using SafeERC20 for IERC20;
+
     address collateral;
     mapping(address depositor => Deposit) private userDeposits;
     uint256 public totalDeposits;
@@ -41,7 +44,7 @@ contract CollateralManager is Ownable, ICollateralManager {
         userDeposit.user = msg.sender;
         userDeposit.amount += amount;
         userDeposit.lastUpdatedAt = block.timestamp;
-        IERC20(collateral).transferFrom(msg.sender, address(this), amount);
+        IERC20(collateral).safeTransferFrom(msg.sender, address(this), amount);
         emit DepositCreated(msg.sender, amount, block.timestamp);
     }
 
@@ -53,12 +56,11 @@ contract CollateralManager is Ownable, ICollateralManager {
         totalDeposits -= amount;
         userDeposit.amount -= amount;
         userDeposit.lastUpdatedAt = block.timestamp;
-        IERC20(collateral).transfer(msg.sender, amount);
+        IERC20(collateral).safeTransfer(msg.sender, amount);
     }
 
     // The losses of the traders are the profits of the LPs.
     function withdrawLosses(address recipient, uint256 amount) public onlyOwner {
-        bool success = IERC20(collateral).transfer(recipient, amount);
-        require(success, "transfer failed");
+        IERC20(collateral).safeTransfer(recipient, amount);
     }
 }

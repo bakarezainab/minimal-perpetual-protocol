@@ -1,0 +1,34 @@
+sequenceDiagram
+    participant Alice
+    participant Contract as LPManagerEpoch
+
+    Note over Alice,Contract: Epoch 1 is current (id=1, freeAssets=0, totalShares=0)
+
+    Alice->>Contract: deposit(1000)
+    Contract->>Contract: safeTransferFrom(Alice, Contract, 1000)
+    Contract->>Contract: Mint shares = 1000 * 1e18
+    Contract->>Contract: epochSharesOf[Alice][1] += 1000 * 1e18
+    Contract->>Contract: liquidityProviders[Alice].totalShares += 1000 * 1e18
+    Contract->>Contract: liquidityProviders[Alice].exists = true
+    Contract->>Contract: lastMaterializedEpoch[Alice] = 1
+    Contract->>Contract: epochs[1].freeAssets += 1000
+    Contract->>Contract: epochs[1].totalShares += 1000 * 1e18
+    Contract->>Contract: globalFreeAssets += 1000
+    Contract-->>Alice: Emit Deposit(Alice, 1, 1000, 1000 * 1e18)
+
+    Note over Alice,Contract: State: epochs[1].freeAssets=1000, totalShares=1000*1e18<br>Alice: totalShares=1000*1e18, utilization=0
+
+    Alice->>Contract: withdrawFromEpoch(1, 500)
+    Contract->>Contract: Check epochs[1].freeAssets >= 500
+    Contract->>Contract: Check liquidityProviders[Alice].available >= 500
+    Contract->>Contract: Shares to burn = 500 * 1e18
+    Contract->>Contract: epochSharesOf[Alice][1] -= 500 * 1e18
+    Contract->>Contract: liquidityProviders[Alice].totalShares -= 500 * 1e18
+    Contract->>Contract: epochs[1].totalShares -= 500 * 1e18
+    Contract->>Contract: epochs[1].freeAssets -= 500
+    Contract->>Contract: globalFreeAssets -= 500
+    Contract->>Alice: safeTransfer(Alice, 500)
+    Contract-->>Alice: Emit Withdraw(Alice, 1, 500, 500 * 1e18)
+
+    Note over Alice,Contract: Final State: epochs[1].freeAssets=500, totalShares=500*1e18<br>Alice: totalShares=500*1e18, utilization=0
+    

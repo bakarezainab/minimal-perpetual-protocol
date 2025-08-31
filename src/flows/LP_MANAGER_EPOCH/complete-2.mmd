@@ -1,0 +1,57 @@
+flowchart TD
+    %% Epochs
+    subgraph E1["Epoch1"]
+        E1FA[FreeAssets=150] 
+        E1LA[LockedAssets=0]
+        E1TS[TotalShares=150e18]
+    end
+
+    subgraph E2["Epoch2"]
+        E2FA[FreeAssets=0] 
+        E2LA[LockedAssets=0]
+        E2TS[TotalShares=0]
+    end
+
+    %% LP Deposits
+    LP1["LP1"] -->|deposit 100| E1FA
+    LP2["LP2"] -->|deposit 50| E1FA
+
+    %% Trade Layer Lock
+    Owner["Owner"] -->|lock 120 for TradeLayer1| E1
+    E1FA -->|FreeAssets=30, LockedAssets=120| E1LA
+
+    %% Epoch Split
+    E1 -->|split| E1Locked["Epoch1 Locked: 120e18 shares"]
+    E1 -->|split| E2Rollover["Epoch2 Rollover: 30e18 shares"]
+    E2FA --> E2Rollover
+
+    %% Materialization
+    LP1 -->|materialize| E1Locked
+    LP1 -->|rollover 20e18 shares| E2Rollover
+    LP2 -->|materialize| E1Locked
+    LP2 -->|rollover 10e18 shares| E2Rollover
+
+    %% Additional deposit to Epoch2
+    LP2 -->|deposit 20| E2FA
+    E2FA -->|FreeAssets=50, TotalShares=50e18| E2TS
+
+    %% Trade Layer Allocation
+    LP1 -->|claim allocation 80| TradeLayer1["TradeLayer1"]
+    LP2 -->|claim allocation 40| TradeLayer1
+
+    Owner -->|activate TradeLayer1| TradeLayer1
+    Owner -->|close TradeLayer1, profit=20| TradeLayer1
+    TradeLayer1 -->|releaseAllocation| LP1
+    TradeLayer1 -->|releaseAllocation| LP2
+
+    %% Withdrawals
+    LP1 -->|withdraw 10 from Epoch2| E2FA
+    LP2 -->|withdraw 15 from Epoch2| E2FA
+
+    %% Final State Notes
+    subgraph FinalState["Final Balances"]
+        FS_LP1["LP1: Epoch1 Locked=80e18, Epoch2 Rollover=10e18"]
+        FS_LP2["LP2: Epoch1 Locked=40e18, Epoch2 Rollover=25e18"]
+        FS_E1["Epoch1 Free=0, Locked=0"]
+        FS_E2["Epoch2 Free=25, Locked=0"]
+    end

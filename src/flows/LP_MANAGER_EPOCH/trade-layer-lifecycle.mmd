@@ -1,0 +1,44 @@
+sequenceDiagram
+    participant Owner
+    participant Alice
+    participant Bob
+    participant Contract as LPManagerEpoch
+
+    Note over Owner,Contract: Trade Layer 1: status=Open, totalAllocated=2000<br>Alice: allocation=1000, Bob: allocation=1000
+
+    Owner->>Contract: activateTradeLayer(1)
+    Contract->>Contract: Check tradeLayers[1].status = Open
+    Contract->>Contract: Check tradeLayers[1].totalAllocated > 0
+    Contract->>Contract: tradeLayers[1].status = Active
+    Contract-->>Owner: Emit TradeLayerActivated(1)
+
+    Owner->>Contract: closeTradeLayer(1, 0)
+    Contract->>Contract: Check tradeLayers[1].status != Closed
+    Contract->>Contract: Check contract balance >= globalFreeAssets
+    Contract->>Contract: epochs[1].lockedAssets -= 2000 (to 0)
+    Contract->>Contract: epochs[1].freeAssets += 2000 (to 2000)
+    Contract->>Contract: globalFreeAssets += 2000
+    Contract->>Contract: tradeLayers[1].status = Closed
+    Contract-->>Owner: Emit TradeLayerClosed(1, 0)
+
+    Note over Owner,Contract: Trade Layer 1 closed, Epoch 1: freeAssets=2000, lockedAssets=0
+
+    Alice->>Contract: releaseAllocation(1)
+    Contract->>Contract: Check tradeLayers[1].status = Closed
+    Contract->>Contract: Check tradeLayers[1].hasAllocated[Alice] = true
+    Contract->>Contract: allocation = tradeLayers[1].allocations[Alice] = 1000
+    Contract->>Contract: liquidityProviders[Alice].accumulatedUtilization -= 1000
+    Contract->>Contract: tradeLayers[1].allocations[Alice] = 0
+    Contract->>Contract: tradeLayers[1].hasAllocated[Alice] = false
+    Contract-->>Alice: Emit AllocationReleased(1, Alice, 1000)
+
+    Bob->>Contract: releaseAllocation(1)
+    Contract->>Contract: Check tradeLayers[1].status = Closed
+    Contract->>Contract: Check tradeLayers[1].hasAllocated[Bob] = true
+    Contract->>Contract: allocation = tradeLayers[1].allocations[Bob] = 1000
+    Contract->>Contract: liquidityProviders[Bob].accumulatedUtilization -= 1000
+    Contract->>Contract: tradeLayers[1].allocations[Bob] = 0
+    Contract->>Contract: tradeLayers[1].hasAllocated[Bob] = false
+    Contract-->>Bob: Emit AllocationReleased(1, Bob, 1000)
+
+    Note over Owner,Contract: Final State: tradeLayers[1].allocations empty<br>Alice: utilization=0, Bob: utilization=0
