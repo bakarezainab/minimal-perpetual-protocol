@@ -261,6 +261,8 @@ contract LPManagerEpoch is ReentrancyGuard, Ownable, ILPManagerEpoch {
         e.freeAssets -= amount;
         e.lockedAssets += amount;
 
+        globalFreeAssets -= amount;
+
         // freeze epoch
         e.frozen = true;
 
@@ -295,8 +297,8 @@ contract LPManagerEpoch is ReentrancyGuard, Ownable, ILPManagerEpoch {
         layer.requiredBacking = requiredBacking;
         layer.fundingEpochId = fundingEpoch;
         layer.status = LayerStatus.Open;
-        layer.totalAllocated = 0;
-        layer.remainingBacking = requiredBacking;
+        layer.totalAllocated = requiredBacking;
+        layer.remainingBacking = 0;
 
         emit TradeLayerCreated(layerId, requiredBacking, fundingEpoch);
     }
@@ -389,7 +391,7 @@ contract LPManagerEpoch is ReentrancyGuard, Ownable, ILPManagerEpoch {
      * @dev Close layer: settle PnL. Owner must ensure the profit tokens (if any) are deposited to contract before calling.
      * The locked assets are returned to the funding epoch's freeAssets along with PnL (profit increases freeAssets; loss reduces).
      */
-    function closeTradeLayer(uint256 layerId, int256 profitLoss) external onlyOwner {
+    function closeTradeLayer(uint256 layerId, uint256 profitLoss, bool lpGains) external onlyOwner {
         TradeLayer storage layer = tradeLayers[layerId];
         require(layer.status == LayerStatus.Open || layer.status == LayerStatus.Active, "already closed");
 
@@ -399,8 +401,8 @@ contract LPManagerEpoch is ReentrancyGuard, Ownable, ILPManagerEpoch {
         // Ensure contract has tokens to reflect the final state before we update epoch accounting
         uint256 contractBal = liquidityToken.balanceOf(address(this));
 
-        if (profitLoss >= 0) {
-            uint256 profit = uint256(profitLoss);
+        if (lpGains) {
+            uint256 profit = (profitLoss);
             // require contract coverage for principal + profit
             require(contractBal >= (globalFreeAssets + profit), "contract not funded with profit");
             // credit profit to funding epoch's freeAssets
@@ -408,7 +410,7 @@ contract LPManagerEpoch is ReentrancyGuard, Ownable, ILPManagerEpoch {
             funding.freeAssets += (lockedAmount + profit);
             globalFreeAssets += (lockedAmount + profit);
         } else {
-            uint256 loss = uint256(-profitLoss);
+            uint256 loss = (profitLoss);
             // ensure contract has enough to absorb loss
             require(contractBal + loss >= globalFreeAssets, "insufficient tokens to absorb loss");
             require(loss < (funding.lockedAssets + globalFreeAssets), "loss too large");
@@ -424,12 +426,13 @@ contract LPManagerEpoch is ReentrancyGuard, Ownable, ILPManagerEpoch {
                 funding.freeAssets += returned;
                 globalFreeAssets += returned;
             }
+            liquidityToken.safeTransfer(msg.sender, loss);
         }
 
         // mark layer closed. LPs must call releaseAllocation to free their utilization.
         layer.status = LayerStatus.Closed;
 
-        emit TradeLayerClosed(layerId, profitLoss);
+        emit TradeLayerClosed(layerId, profitLoss, lpGains);
     }
 
     // ============= Views & helpers =============
