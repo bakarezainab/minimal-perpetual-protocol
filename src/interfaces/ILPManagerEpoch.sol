@@ -46,7 +46,7 @@ interface ILPManagerEpoch {
     event AllocationClaimed(uint256 indexed layerId, address indexed lp, uint256 allocation);
     event AllocationReleased(uint256 indexed layerId, address indexed lp, uint256 allocation);
     event TradeLayerActivated(uint256 indexed layerId);
-    event TradeLayerClosed(uint256 indexed layerId, int256 profitLoss);
+    event TradeLayerClosed(uint256 indexed layerId, uint256 profitLoss, bool isProfit);
 
     // ============= Errors =============
     error BadSplitState();

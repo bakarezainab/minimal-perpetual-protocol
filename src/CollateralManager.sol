@@ -4,18 +4,22 @@ pragma solidity ^0.8.13;
 import {IERC20} from "@openzeppelin-contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin-contracts/token/ERC20/utils/SafeERC20.sol";
 import {Ownable} from "@openzeppelin-contracts/access/Ownable.sol";
+import {IPositionManager} from "./interfaces/IPositionManager.sol";
+
 import "./interfaces/ICollateralManager.sol";
 
-// Collect usdc and save the amounts of each deposit of the users
+// Collect DAI and save the amounts of each deposit of the users
 contract CollateralManager is Ownable, ICollateralManager {
     using SafeERC20 for IERC20;
 
     address collateral;
+    IPositionManager positionManager;
     mapping(address depositor => Deposit) private userDeposits;
     uint256 public totalDeposits;
 
-    constructor(address _collateral) Ownable(msg.sender) {
+    constructor(address _collateral, address _positionManager) Ownable(msg.sender) {
         collateral = _collateral;
+        positionManager = IPositionManager(_positionManager);
     }
 
     function getUserDeposit(address user) public view returns (address, uint256, uint256) {
@@ -31,7 +35,6 @@ contract CollateralManager is Ownable, ICollateralManager {
         } else {
             totalDeposits -= amount;
             userDeposit.amount -= amount;
-            IERC20(collateral).transfer(msg.sender, amount);
         }
         userDeposit.lastUpdatedAt = block.timestamp;
         emit UpdatedUserDeposit(user, amount, block.timestamp);
@@ -49,8 +52,8 @@ contract CollateralManager is Ownable, ICollateralManager {
     }
 
     function withdraw(uint256 amount) public {
-        // @todo: This is wrongly implemented.
-        //  Revisit this once we have position health check in place
+        require(!positionManager.hasOpenPosition(msg.sender), "user position open");
+
         Deposit storage userDeposit = userDeposits[msg.sender];
         require(userDeposit.amount >= amount, "Insufficient deposit");
         totalDeposits -= amount;
