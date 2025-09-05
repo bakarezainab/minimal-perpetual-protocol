@@ -12,4 +12,8 @@
 
 ### Invariants
 
--   User can't withdraw when position is open
+- User can't withdraw when position is open
+
+### Getting supported
+
+`forge soldeer install`
